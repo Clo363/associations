@@ -40,7 +40,7 @@ const T = {
     nobody: 'Пока никто не прошёл ни одного слова', you: 'вы', pts: 'очк.', clean: 'без подсказок',
     gaveUp: 'сдался', hiddenWord: '• • •', hiddenHint: 'Ответы видны только для слов, которые вы уже прошли.',
     refresh: 'Обновить', legend: '✅ без подсказок · 💡 5-я подсказка · 🔤 буквы · 🏳️ сдался',
-    baseLabel: 'Слова в лиге',
+    baseLabel: 'Слова в лиге', levelLabel: 'Сложность', anyLevel: 'Любая',
   },
   uk: {
     appName: 'Асоціації', whoPlays: 'Хто грає?', adults: 'Дорослі', kids: 'Діти',
@@ -79,7 +79,7 @@ const T = {
     nobody: 'Поки ніхто не пройшов жодного слова', you: 'ви', pts: 'бал.', clean: 'без підказок',
     gaveUp: 'здався', hiddenWord: '• • •', hiddenHint: 'Відповіді видно лише для слів, які ви вже пройшли.',
     refresh: 'Оновити', legend: '✅ без підказок · 💡 5-та підказка · 🔤 літери · 🏳️ здався',
-    baseLabel: 'Слова в лізі',
+    baseLabel: 'Слова в лізі', levelLabel: 'Складність', anyLevel: 'Будь-яка',
   },
 };
 
@@ -121,7 +121,7 @@ const S = {
   // League: the active league, my results in it, and the league screen state.
   league: store.get('league', null), lres: {},
   lv: { tab: 'table', level: 1, players: null, loading: false, error: false },
-  form: { lname: '', base: null, name: store.get('myName', ''), code: '' },
+  form: { lname: '', base: null, level: 0, name: store.get('myName', ''), code: '' },
   invite: null, busy: false, formError: '', toast: '',
 };
 
@@ -133,6 +133,9 @@ const ns = () => (S.league ? `L_${S.league.code}_${S.league.me.key}` : curBase()
 /** Local league results and the unsent flag, per league and per player (a phone may be shared). */
 const lresKey = L => `lres_${L.code}_${L.me.key}`;
 const dirtyKey = L => `ldirty_${L.code}_${L.me.key}`;
+/** Difficulty fixed by the league creator (1..3), or 0 when players switch freely. */
+const fixedLevel = () => (S.league && S.league.level) || 0;
+const levelText = (x, lv) => (lv ? x.levels[lv - 1] : x.anyLevel);
 const all = () => S.data[curBase()] || [];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -180,6 +183,7 @@ const leagueOrder = lv => shuffled(all().filter(p => p.level === lv), hash(S.lea
 
 async function openBase() {
   const key = curBase();
+  S.level = fixedLevel() || store.get('level', 1);
   document.documentElement.lang = S.lang;
   if (S.league) {
     S.lres = store.get(lresKey(S.league), {});
@@ -394,7 +398,7 @@ async function joinLeague(code, name) {
   if (!info) throw Object.assign(new Error('not found'), { notFound: true });
   const key = playerKey(name);
   const server = await fetchPlayer(code, key);
-  S.league = { code, name: info.name, base: info.base, me: { key, name: server ? server.name : name.trim() } };
+  S.league = { code, name: info.name, base: info.base, level: info.level || 0, me: { key, name: server ? server.name : name.trim() } };
   const merged = Object.assign({}, (server && server.results) || {}, store.get(lresKey(S.league), {}));
   store.set('league', S.league);
   store.set('myName', name.trim());
@@ -405,7 +409,7 @@ async function joinLeague(code, name) {
     store.set('lang', S.lang); store.set('audience', S.aud);
   }
   await syncLeague();
-  S.lv = { tab: 'table', level: S.level, players: null, loading: false, error: false };
+  S.lv = { tab: 'table', level: info.level || S.level, players: null, loading: false, error: false };
   await openBase();
 }
 
@@ -523,7 +527,8 @@ function viewGame() {
       : `<span class="aud">${esc(S.aud === 'kids' ? x.kids : x.adults)}</span>` +
         `<button class="icon" data-a="league" aria-label="${esc(x.league)}">${ICON.cup}</button>`) +
     `<button class="icon" data-a="settings" aria-label="${esc(x.settings)}">${ICON.gear}</button></div>`;
-  h += seg([1, 2, 3].map(lv => { const [d, n] = counts(lv); return [x.levels[lv - 1], `${d}/${n}`]; }), S.level - 1, 'level');
+  const lvls = fixedLevel() ? [fixedLevel()] : [1, 2, 3];
+  h += seg(lvls.map(lv => { const [d, n] = counts(lv); return [x.levels[lv - 1], `${d}/${n}`]; }), lvls.indexOf(S.level), 'level');
 
   const p = S.puzzle;
   if (S.loading) return h + `<div class="screen center muted">${esc(x.loading)}</div></div>`;
@@ -611,7 +616,7 @@ function viewLeague() {
         <button class="btn outline wide" data-a="inviteDone">${esc(x.back)}</button></div>`;
     }
     return h + `<div class="panel"><p class="muted">${esc(x.invitedTo)}</p><h2 class="lname">${esc(iv.info.name)}</h2>
-      <p class="muted">${esc(x.baseLabel)}: ${esc(BASE_NAMES[iv.info.base])}</p>
+      <p class="muted">${esc(x.baseLabel)}: ${esc(BASE_NAMES[iv.info.base])} · ${esc(x.levelLabel)}: ${esc(levelText(x, iv.info.level || 0))}</p>
       ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
       <p class="hint">${esc(x.joinHint)}</p>${err}
       <button class="btn filled wide" data-a="joinInvite"${dis}>${esc(S.busy ? x.loading : x.join)}</button></div></div>`;
@@ -625,6 +630,9 @@ function viewLeague() {
         <p class="label">${esc(x.baseLabel)}</p>
         <div class="grid2">${BASES.map((b, i) =>
           `<button class="opt${i === baseIdx ? ' on' : ''}" data-a="pickBase" data-v="${b}">${esc(BASE_NAMES[b])}</button>`).join('')}</div>
+        <p class="label">${esc(x.levelLabel)}</p>
+        <div class="grid2">${[0, 1, 2, 3].map(lv =>
+          `<button class="opt${lv === S.form.level ? ' on' : ''}" data-a="pickLevel" data-v="${lv}">${esc(levelText(x, lv))}</button>`).join('')}</div>
         ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
         <button class="btn filled wide" data-a="create"${dis}>${esc(S.busy ? x.loading : x.create)}</button></div>
       <div class="panel"><h2>${esc(x.joinLeague)}</h2>
@@ -636,7 +644,7 @@ function viewLeague() {
   }
 
   const L = S.league;
-  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
+  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(levelText(x, fixedLevel()))} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
     <div class="actions two"><button class="btn tonal" data-a="invite">${esc(x.invite)}</button>
     <button class="btn filled" data-a="back">${esc(x.play)}</button></div>`;
   if (S.toast) h += `<p class="hint center-text">${esc(S.toast)}</p>`;
@@ -653,12 +661,13 @@ function viewLeague() {
       const solved = s.lv[0] + s.lv[1] + s.lv[2];
       return `<div class="prow${me ? ' me' : ''}"><span class="rank">${i + 1}</span>
         <div class="pname"><b>${esc(p.name)}${me ? ` <small>(${esc(x.you)})</small>` : ''}</b>
-        <small>${x.levels.map((n, k) => `${esc(n.slice(0, 3))} ${s.lv[k]}`).join(' · ')}` +
+        <small>${(fixedLevel() ? [fixedLevel()] : [1, 2, 3]).map(lv => `${esc(fixedLevel() ? x.levels[lv - 1] : x.levels[lv - 1].slice(0, 3))} ${s.lv[lv - 1]}`).join(' · ')}` +
         `${solved ? ` · ${Math.round(100 * s.clean / solved)}% ${esc(x.clean)}` : ''}${s.gave ? ` · 🏳️${s.gave}` : ''}</small></div>
         <span class="ppts">${s.pts}</span></div>`;
     }).join('') + '</div>';
   } else {
-    h += seg([1, 2, 3].map(lv => [x.levels[lv - 1]]), S.lv.level - 1, 'lwlevel');
+    if (fixedLevel()) S.lv.level = fixedLevel();
+    else h += seg([1, 2, 3].map(lv => [x.levels[lv - 1]]), S.lv.level - 1, 'lwlevel');
     const order = leagueOrder(S.lv.level);
     let last = -1;
     order.forEach((w, i) => { if (players.some(p => p.results[w.answer])) last = i; });
@@ -721,7 +730,11 @@ function openLeagueScreen() {
 const actions = {
   obLang: v => { S.onboardLang = v; },
   obAud: v => { S.screen = 'game'; setBase(S.onboardLang, v); },
-  level: v => { const lv = Number(v) + 1; if (lv !== S.level) { S.level = lv; store.set('level', lv); loadCurrent(); } },
+  level: v => {
+    if (fixedLevel()) return;
+    const lv = Number(v) + 1;
+    if (lv !== S.level) { S.level = lv; store.set('level', lv); loadCurrent(); }
+  },
   tile: v => tapTile(Number(v)),
   slot: v => tapSlot(Number(v)),
   clear: clearSlots,
@@ -744,13 +757,14 @@ const actions = {
   // league
   league: openLeagueScreen,
   pickBase: v => { S.form.base = v; },
+  pickLevel: v => { S.form.level = Number(v); },
   create: () => {
     const x = t();
     const lname = S.form.lname.trim(), name = S.form.name.trim();
     if (!lname) { S.formError = x.needLeagueName; return; }
     if (!name) { S.formError = x.needName; return; }
     busy(async () => {
-      const code = await createLeagueDoc(lname, S.form.base || curBase(), name);
+      const code = await createLeagueDoc(lname, S.form.base || curBase(), S.form.level, name);
       await joinLeague(code, name);
       openLeagueScreen();
     });
