@@ -1,4 +1,4 @@
-const CACHE = 'assoc-2410a323bd';
+const CACHE = 'assoc-37a81e87d2';
 const FILES = ['./', 'index.html', 'league.js', 'app.js', 'style.css', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'data/ru_adult.json', 'data/ru_kids.json', 'data/uk_adult.json', 'data/uk_kids.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -9,6 +9,17 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(r => r || fetch(e.request)));
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return; // league server calls go straight to the network
+  if (req.mode === 'navigate' || /\.(js|css|webmanifest)$/.test(url.pathname)) {
+    // App code: network first, so updates apply on the next open; cache when offline.
+    e.respondWith(fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('./'))));
+    return;
+  }
+  e.respondWith(caches.match(req, { ignoreSearch: true }).then(r => r || fetch(req)));
 });

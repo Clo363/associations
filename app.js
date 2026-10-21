@@ -451,16 +451,19 @@ async function startInvite(code) {
 async function doInvite() {
   const x = t();
   const url = location.origin + location.pathname + '?league=' + S.league.code;
+  // The link goes inside the text: some messengers drop a separate url field.
+  const text = `${x.inviteText} «${S.league.name}» (${x.code}: ${S.league.code})
+${url}`;
   if (navigator.share) {
     try {
-      await navigator.share({ title: x.appName, text: `${x.inviteText} «${S.league.name}»`, url });
+      await navigator.share({ text });
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
     }
   }
   try {
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(text);
     S.toast = x.copied;
   } catch (e) {
     S.toast = url;
@@ -509,7 +512,8 @@ function viewOnboard() {
   if (!S.onboardLang) {
     return `<div class="screen center">${ICON.logo}<h1>Ассоциации · Асоціації</h1>
       <button class="big" data-a="obLang" data-v="ru"><b>Русский</b></button>
-      <button class="big" data-a="obLang" data-v="uk"><b>Українська</b></button></div>`;
+      <button class="big" data-a="obLang" data-v="uk"><b>Українська</b></button>
+      <button class="btn text" data-a="obCode" style="margin-top:16px">🏆 Есть код лиги · Маю код ліги</button></div>`;
   }
   const x = T[S.onboardLang];
   return `<div class="screen center">${ICON.logo}<h1>${esc(x.appName)}</h1><div>${esc(x.whoPlays)}</div>
@@ -612,8 +616,9 @@ function viewLeague() {
     const iv = S.invite;
     if (iv.loading) return h + `<div class="screen center muted">${esc(x.loading)}</div></div>`;
     if (iv.notFound || iv.error) {
-      return h + `<p class="err">${esc(iv.notFound ? x.notFound : x.offline)}</p>
-        <button class="btn outline wide" data-a="inviteDone">${esc(x.back)}</button></div>`;
+      return h + `<p class="err">${esc(iv.notFound ? x.notFound : x.offline)}</p>` +
+        (iv.error ? `<button class="btn filled wide" data-a="inviteRetry">${esc(x.refresh)}</button>` : '') +
+        `<button class="btn outline wide" data-a="inviteDone">${esc(x.back)}</button></div>`;
     }
     return h + `<div class="panel"><p class="muted">${esc(x.invitedTo)}</p><h2 class="lname">${esc(iv.info.name)}</h2>
       <p class="muted">${esc(x.baseLabel)}: ${esc(BASE_NAMES[iv.info.base])} · ${esc(x.levelLabel)}: ${esc(levelText(x, iv.info.level || 0))}</p>
@@ -783,6 +788,8 @@ const actions = {
     busy(async () => { await joinLeague(code, name); S.invite = null; openLeagueScreen(); });
   },
   inviteDone: () => { S.invite = null; actions.back(); },
+  inviteRetry: () => { startInvite(S.invite.code); },
+  obCode: () => { S.screen = 'league'; S.invite = null; S.formError = ''; },
   invite: () => { doInvite(); },
   ltab: v => { S.lv.tab = v === '0' ? 'table' : 'words'; },
   lwlevel: v => { S.lv.level = Number(v) + 1; },
