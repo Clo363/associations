@@ -1,5 +1,5 @@
-const CACHE = 'assoc-b61562377a';
-const FILES = ['./', 'index.html', 'app.js', 'style.css', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'data/ru_adult.json', 'data/ru_kids.json', 'data/uk_adult.json', 'data/uk_kids.json'];
+const CACHE = 'assoc-33401a3ad8';
+const FILES = ['./', 'index.html', 'league.js', 'app.js', 'style.css', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'data/ru_adult.json', 'data/ru_kids.json', 'data/uk_adult.json', 'data/uk_kids.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });

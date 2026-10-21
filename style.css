@@ -120,3 +120,34 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .dialog h3 { margin: 0 0 8px; }
 .dialog .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .bottom.sticky { position: sticky; bottom: 0; background: var(--bg); }
+
+/* league */
+.chip.league { background: var(--pc); color: var(--on-pc); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+.top .icon:first-of-type { margin-left: 0; }
+.panel { background: var(--surface); border: 1px solid var(--sv); border-radius: 16px; padding: 16px; margin: 12px 0; display: grid; gap: 10px; }
+.panel h2 { margin: 0; }
+.input { width: 100%; border: 1px solid var(--outline); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px;
+  background: var(--surface); color: var(--fg); }
+.input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+.label { margin: 4px 0 0; font-size: 14px; color: var(--on-sv); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.opt { border: 1px solid var(--outline); border-radius: 12px; padding: 10px 6px; font-weight: 600; }
+.opt.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.hint { font-size: 13px; color: var(--on-sv); margin: 0; }
+.err { color: var(--error); margin: 8px 0; }
+.center-text { text-align: center; }
+.lname { margin: 12px 0 2px; font-size: 22px; }
+.actions.two { grid-template-columns: 1fr 1fr; }
+.board { display: grid; gap: 6px; margin: 4px 0 8px; }
+.prow { display: flex; align-items: center; gap: 10px; background: var(--sv); border-radius: 12px; padding: 10px 12px; }
+.prow.me { outline: 2px solid var(--primary); }
+.rank { width: 22px; text-align: center; font-weight: 800; color: var(--on-sv); }
+.pname { flex: 1; min-width: 0; display: grid; }
+.pname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pname small { color: var(--on-sv); font-size: 12px; }
+.ppts { font-weight: 800; font-size: 18px; }
+.words { display: grid; gap: 6px; margin: 8px 0; }
+.wrow { display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; background: var(--sv); border-radius: 12px; padding: 8px 12px; }
+.wn { color: var(--on-sv); font-weight: 700; grid-row: span 2; }
+.whos { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.who { white-space: nowrap; }
