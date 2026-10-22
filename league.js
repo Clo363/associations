@@ -106,12 +106,12 @@ async function fetchLeague(code) {
 }
 
 /** Creates a league with a fresh code; returns the code. level 0 = players pick any difficulty. */
-async function createLeagueDoc(name, base, level, creator) {
+async function createLeagueDoc(name, base, level, packs, creator) {
   for (let i = 0; i < 5; i++) {
     const code = randomCode();
     try {
       await fs('POST', 'leagues', {
-        fields: { name: enc(name), base: enc(base), level: enc(level), createdAt: enc(Date.now()), creator: enc(creator) },
+        fields: { name: enc(name), base: enc(base), level: enc(level), packs: enc(packs), createdAt: enc(Date.now()), creator: enc(creator) },
       }, '?documentId=' + code);
       return code;
     } catch (e) {

@@ -41,6 +41,9 @@ const T = {
     gaveUp: 'сдался', hiddenWord: '• • •', hiddenHint: 'Ответы видны только для слов, которые вы уже прошли.',
     refresh: 'Обновить', legend: '✅ без подсказок · 💡 5-я подсказка · 🔤 буквы · 🏳️ сдался',
     baseLabel: 'Слова в лиге', levelLabel: 'Сложность', anyLevel: 'Любая',
+    packLabel: 'Набор слов', allPacks: 'Все наборы', pack: 'Набор', onlyPack: 'Только набор',
+    packHint: 'Пройденные слова не повторяются. Если прогресс потерялся, выберите только новый набор.',
+    newPack: 'Новый набор: +{n} сложных слов! Выбрать набор можно в настройках.',
     rate: 'Как вам загадка?', like: 'Нравится', dislike: 'Не нравится',
   },
   uk: {
@@ -81,6 +84,9 @@ const T = {
     gaveUp: 'здався', hiddenWord: '• • •', hiddenHint: 'Відповіді видно лише для слів, які ви вже пройшли.',
     refresh: 'Оновити', legend: '✅ без підказок · 💡 5-та підказка · 🔤 літери · 🏳️ здався',
     baseLabel: 'Слова в лізі', levelLabel: 'Складність', anyLevel: 'Будь-яка',
+    packLabel: 'Набір слів', allPacks: 'Усі набори', pack: 'Набір', onlyPack: 'Лише набір',
+    packHint: 'Пройдені слова не повторюються. Якщо прогрес загубився, оберіть лише новий набір.',
+    newPack: 'Новий набір: +{n} складних слів! Обрати набір можна в налаштуваннях.',
     rate: 'Як вам загадка?', like: 'Подобається', dislike: 'Не подобається',
   },
 };
@@ -123,7 +129,8 @@ const S = {
   // League: the active league, my results in it, and the league screen state.
   league: store.get('league', null), lres: {},
   lv: { tab: 'table', level: 1, players: null, loading: false, error: false },
-  form: { lname: '', base: null, level: 0, name: store.get('myName', ''), code: '' },
+  form: { lname: '', base: null, level: 0, packs: 0, name: store.get('myName', ''), code: '' },
+  pack: store.get('pack', 0),
   invite: null, busy: false, formError: '', toast: '',
 };
 
@@ -179,7 +186,27 @@ function makeTiles(ans, lang, seed) {
 }
 
 /** The same word order for every member of a league: a shuffle seeded by the league code. */
-const leagueOrder = lv => shuffled(all().filter(p => p.level === lv), hash(S.league.code + ':' + lv));
+const packOf = p => p.pack || 1;
+/** Pack numbers present in a loaded base, e.g. [1, 2]. */
+const packsIn = base => [...new Set((S.data[base] || []).map(packOf))].sort((a, b) => a - b);
+/** Pack filter in effect: the league's, or the player's choice in free play (0 = all packs). */
+const packFilter = () => {
+  const k = S.league ? S.league.packs || 0 : S.pack;
+  return packsIn(curBase()).includes(k) ? k : 0;
+};
+/** Puzzles of the current base that the active pack filter allows. */
+const pool = () => { const k = packFilter(); return all().filter(p => !k || packOf(p) === k); };
+
+/**
+ * The same word order for every member of a league: each pack is shuffled with a seed from the league code
+ * and packs follow one another, so adding a pack never reorders words of older packs.
+ */
+const leagueOrder = lv => {
+  const byPack = {};
+  for (const p of pool()) if (p.level === lv) (byPack[packOf(p)] = byPack[packOf(p)] || []).push(p);
+  return Object.keys(byPack).map(Number).sort((a, b) => a - b)
+    .flatMap(k => shuffled(byPack[k], hash(S.league.code + ':' + lv + (k === 1 ? '' : ':p' + k))));
+};
 
 // ------------------------------------------------------------------ game logic
 
@@ -209,7 +236,7 @@ async function openBase() {
 }
 
 function loadCurrent() {
-  const list = all().filter(p => p.level === S.level);
+  const list = pool().filter(p => p.level === S.level);
   let p = null;
   if (S.league) {
     p = leagueOrder(S.level).find(x => !S.solved.has(x.answer)) || null;
@@ -335,13 +362,13 @@ function finish(r) {
 }
 
 function counts(lv) {
-  const list = all().filter(p => p.level === lv);
+  const list = pool().filter(p => p.level === lv);
   return [list.filter(p => S.solved.has(p.answer)).length, list.length];
 }
 
 function replayLevel(lv) {
   if (S.league) return;
-  const answers = new Set(all().filter(p => p.level === lv).map(p => p.answer));
+  const answers = new Set(pool().filter(p => p.level === lv).map(p => p.answer));
   S.solved = new Set([...S.solved].filter(a => !answers.has(a)));
   store.set('solved_' + ns(), [...S.solved]);
   if (lv === S.level) loadCurrent();
@@ -400,7 +427,7 @@ async function joinLeague(code, name) {
   if (!info) throw Object.assign(new Error('not found'), { notFound: true });
   const key = playerKey(name);
   const server = await fetchPlayer(code, key);
-  S.league = { code, name: info.name, base: info.base, level: info.level || 0, me: { key, name: server ? server.name : name.trim() } };
+  S.league = { code, name: info.name, base: info.base, level: info.level || 0, packs: info.packs || 0, me: { key, name: server ? server.name : name.trim() } };
   const merged = Object.assign({}, (server && server.results) || {}, store.get(lresKey(S.league), {}));
   store.set('league', S.league);
   store.set('myName', name.trim());
@@ -570,8 +597,16 @@ function viewGame() {
       : `<span class="aud">${esc(S.aud === 'kids' ? x.kids : x.adults)}</span>` +
         `<button class="icon" data-a="league" aria-label="${esc(x.league)}">${ICON.cup}</button>`) +
     `<button class="icon" data-a="settings" aria-label="${esc(x.settings)}">${ICON.gear}</button></div>`;
-  const lvls = fixedLevel() ? [fixedLevel()] : [1, 2, 3];
+  // Hide levels that have no words in the selected pack (e.g. pack 2 is hard words only).
+  const withWords = [1, 2, 3].filter(lv => counts(lv)[1] > 0);
+  const lvls = fixedLevel() ? [fixedLevel()] : (withWords.length ? withWords : [1, 2, 3]);
   h += seg(lvls.map(lv => { const [d, n] = counts(lv); return [x.levels[lv - 1], `${d}/${n}`]; }), lvls.indexOf(S.level), 'level');
+
+  const newest = Math.max(...packsIn(curBase()), 1);
+  if (!S.league && newest > 1 && !store.get(`seenPack_${curBase()}_${newest}`, false)) {
+    const n = all().filter(p => packOf(p) === newest).length;
+    h += `<div class="banner"><span>🆕 ${esc(x.newPack.replace('{n}', n))}</span><button data-a="hideBanner" data-v="${newest}" aria-label="OK">✕</button></div>`;
+  }
 
   const p = S.puzzle;
   if (S.loading) return h + `<div class="screen center muted">${esc(x.loading)}</div></div>`;
@@ -635,6 +670,13 @@ function viewSettings() {
   h += `<h2>${esc(x.language)}</h2>` + seg([['Русский'], ['Українська']], S.lang === 'ru' ? 0 : 1, 'setLang');
   if (!S.league) {
     h += `<h2>${esc(x.audience)}</h2>` + seg([[x.adults], [x.kids, x.kidsNote]], S.aud === 'adult' ? 0 : 1, 'setAud');
+    const packs = packsIn(curBase());
+    if (packs.length > 1) {
+      const opts = [0, ...packs];
+      h += `<h2>${esc(x.packLabel)}</h2>` +
+        seg(opts.map(k => [k ? `${x.pack} ${k}` : x.allPacks]), opts.indexOf(packFilter()), 'setPack') +
+        `<p class="hint">${esc(x.packHint)}</p>`;
+    }
   }
   h += `<h2>${esc(x.progress)}</h2>`;
   for (const lv of [1, 2, 3]) {
@@ -672,6 +714,7 @@ function viewLeague() {
 
   if (!S.league) {
     const baseIdx = BASES.indexOf(S.form.base || curBase());
+    const createPacks = packsIn(S.form.base || curBase());
     return h + `<p class="muted">${esc(x.leagueIntro)}</p>
       <div class="panel"><h2>${esc(x.createLeague)}</h2>
         ${input('lname', x.leagueName, 'maxlength="40"')}
@@ -681,6 +724,8 @@ function viewLeague() {
         <p class="label">${esc(x.levelLabel)}</p>
         <div class="grid2">${[0, 1, 2, 3].map(lv =>
           `<button class="opt${lv === S.form.level ? ' on' : ''}" data-a="pickLevel" data-v="${lv}">${esc(levelText(x, lv))}</button>`).join('')}</div>
+        ${createPacks.length > 1 ? `<p class="label">${esc(x.packLabel)}</p><div class="grid2">${[0, ...createPacks].map(k =>
+          `<button class="opt${k === S.form.packs ? ' on' : ''}" data-a="pickPacks" data-v="${k}">${esc(k ? `${x.onlyPack} ${k}` : x.allPacks)}</button>`).join('')}</div>` : ''}
         ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
         <button class="btn filled wide" data-a="create"${dis}>${esc(S.busy ? x.loading : x.create)}</button></div>
       <div class="panel"><h2>${esc(x.joinLeague)}</h2>
@@ -692,7 +737,7 @@ function viewLeague() {
   }
 
   const L = S.league;
-  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(levelText(x, fixedLevel()))} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
+  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(levelText(x, fixedLevel()))}${L.packs ? ` · ${esc(x.pack)} ${L.packs}` : ''} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
     <div class="actions two"><button class="btn tonal" data-a="invite">${esc(x.invite)}</button>
     <button class="btn filled" data-a="back">${esc(x.play)}</button></div>`;
   if (S.toast) h += `<p class="hint center-text">${esc(S.toast)}</p>`;
@@ -807,13 +852,23 @@ const actions = {
   league: openLeagueScreen,
   pickBase: v => { S.form.base = v; },
   pickLevel: v => { S.form.level = Number(v); },
+  pickPacks: v => { S.form.packs = Number(v); },
+  setPack: v => {
+    const opts = [0, ...packsIn(curBase())];
+    S.pack = opts[Number(v)] || 0; store.set('pack', S.pack);
+    const lv = [S.level, 1, 2, 3].find(l => pool().some(p => p.level === l));
+    if (lv && lv !== S.level) { S.level = lv; store.set('level', lv); }
+    loadCurrent();
+  },
+  hideBanner: v => { store.set(`seenPack_${curBase()}_${v}`, true); },
   create: () => {
     const x = t();
     const lname = S.form.lname.trim(), name = S.form.name.trim();
     if (!lname) { S.formError = x.needLeagueName; return; }
     if (!name) { S.formError = x.needName; return; }
     busy(async () => {
-      const code = await createLeagueDoc(lname, S.form.base || curBase(), S.form.level, name);
+      const base = S.form.base || curBase();
+      const code = await createLeagueDoc(lname, base, S.form.level, packsIn(base).includes(S.form.packs) ? S.form.packs : 0, name);
       await joinLeague(code, name);
       openLeagueScreen();
     });

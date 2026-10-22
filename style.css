@@ -158,3 +158,9 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .vote { height: 52px; border-radius: 99px; border: 1px solid var(--outline); font-size: 24px; background: var(--surface); }
 .vote.on { background: var(--sc); border-color: var(--secondary); }
 .vote-row .btn { min-height: 52px; }
+
+/* new pack banner */
+.banner { display: flex; align-items: center; gap: 8px; background: var(--sc); color: var(--on-sc);
+  border-radius: 12px; padding: 8px 8px 8px 12px; margin-bottom: 8px; font-size: 14px; }
+.banner span { flex: 1; }
+.banner button { width: 32px; height: 32px; border-radius: 50%; font-size: 16px; }
