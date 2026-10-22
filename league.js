@@ -74,6 +74,21 @@ async function fs(method, path, body, query) {
   return r.json();
 }
 
+/** Firebase user id of this device, taken from the ID token (works for tokens saved before uid was stored). */
+async function myUid() {
+  const tok = await idToken();
+  const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(decodeURIComponent(escape(atob(b64)))).user_id;
+}
+
+/** One vote per device and puzzle: 1 = like, -1 = dislike, 0 = withdrawn. No names are stored. */
+async function saveVote(base, answer, vote) {
+  const uid = await myUid();
+  await fs('PATCH', 'feedback/' + encodeURIComponent(`${uid}_${base}_${answer}`), {
+    fields: { base: enc(base), answer: enc(answer), vote: enc(vote), t: enc(Date.now()) },
+  });
+}
+
 /** Player document id: the name itself, so the same name on another device continues the same record. */
 const playerKey = name => name.trim().replace(/\s+/g, ' ').toLowerCase().replace(/\//g, '_').slice(0, 30);
 const playerPath = (code, key) => `leagues/${code}/players/${encodeURIComponent(key)}`;

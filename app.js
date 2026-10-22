@@ -41,6 +41,7 @@ const T = {
     gaveUp: 'сдался', hiddenWord: '• • •', hiddenHint: 'Ответы видны только для слов, которые вы уже прошли.',
     refresh: 'Обновить', legend: '✅ без подсказок · 💡 5-я подсказка · 🔤 буквы · 🏳️ сдался',
     baseLabel: 'Слова в лиге', levelLabel: 'Сложность', anyLevel: 'Любая',
+    rate: 'Как вам загадка?', like: 'Нравится', dislike: 'Не нравится',
   },
   uk: {
     appName: 'Асоціації', whoPlays: 'Хто грає?', adults: 'Дорослі', kids: 'Діти',
@@ -80,6 +81,7 @@ const T = {
     gaveUp: 'здався', hiddenWord: '• • •', hiddenHint: 'Відповіді видно лише для слів, які ви вже пройшли.',
     refresh: 'Оновити', legend: '✅ без підказок · 💡 5-та підказка · 🔤 літери · 🏳️ здався',
     baseLabel: 'Слова в лізі', levelLabel: 'Складність', anyLevel: 'Будь-яка',
+    rate: 'Як вам загадка?', like: 'Подобається', dislike: 'Не подобається',
   },
 };
 
@@ -485,6 +487,43 @@ async function busy(fn) {
   render();
 }
 
+// ------------------------------------------------------------------ feedback
+
+const voteKey = p => `${curBase()}|${p.answer}`;
+
+/** Likes/dislikes on the result screen; kept locally and sent to the server (queued when offline). */
+function castVote(v) {
+  const p = S.result && S.result.puzzle;
+  if (!p) return;
+  const votes = store.get('votes', {});
+  const key = voteKey(p);
+  const vote = votes[key] === v ? 0 : v; // tapping the same thumb again withdraws the vote
+  votes[key] = vote;
+  store.set('votes', votes);
+  const pending = store.get('votesPending', {});
+  pending[key] = vote;
+  store.set('votesPending', pending);
+  flushVotes();
+}
+
+let flushing = false;
+async function flushVotes() {
+  if (flushing) return;
+  flushing = true;
+  try {
+    const pending = store.get('votesPending', {});
+    for (const [key, vote] of Object.entries(pending)) {
+      const [base, answer] = key.split('|');
+      await saveVote(base, answer, vote);
+      const now = store.get('votesPending', {});
+      if (now[key] === vote) { delete now[key]; store.set('votesPending', now); }
+    }
+  } catch (e) {
+    // offline or server unavailable: stays queued
+  }
+  flushing = false;
+}
+
 // ------------------------------------------------------------------ rendering
 
 const ICON = {
@@ -582,7 +621,11 @@ function viewResult() {
   h += `<h2>${esc(x.whyClues)}</h2>` + p.clues.map((c, i) =>
     `<div class="ex${i === 4 ? ' extra' : ''}"><b>${esc(cap(c.w))}</b>${i === 4 ? `<small>· ${esc(x.fifthLabel)}</small>` : ''}<p>${esc(c.e)}</p></div>`
   ).join('');
-  h += `</div><div class="grow"></div><div class="bottom sticky"><button class="btn filled wide" data-a="next">${esc(x.next)}</button></div></div>`;
+  const vote = (store.get('votes', {}))[voteKey(p)] || 0;
+  h += `</div><div class="grow"></div><div class="bottom sticky"><div class="rate">${esc(x.rate)}</div><div class="vote-row">
+    <button class="vote${vote === 1 ? ' on' : ''}" data-a="vote" data-v="1" aria-label="${esc(x.like)}">👍</button>
+    <button class="vote${vote === -1 ? ' on' : ''}" data-a="vote" data-v="-1" aria-label="${esc(x.dislike)}">👎</button>
+    <button class="btn filled" data-a="next">${esc(x.next)}</button></div></div></div>`;
   return h;
 }
 
@@ -748,6 +791,7 @@ const actions = {
   giveup: () => { S.dialog = 'giveup'; },
   confirmGiveUp: () => { S.dialog = null; giveUp(); },
   next: () => { S.result = null; S.screen = 'game'; loadCurrent(); },
+  vote: v => castVote(Number(v)),
   settings: () => { S.screen = 'settings'; window.scrollTo(0, 0); },
   back: () => {
     S.screen = S.lang && S.aud ? 'game' : 'onboard';
@@ -818,7 +862,7 @@ $app.addEventListener('input', e => {
   if (f) S.form[f] = e.target.value;
 });
 
-window.addEventListener('online', () => { syncLeague(); });
+window.addEventListener('online', () => { syncLeague(); flushVotes(); });
 
 // ------------------------------------------------------------------ start
 
@@ -832,6 +876,7 @@ if (inviteCode && !(S.league && S.league.code === inviteCode)) {
   S.screen = 'game';
   openBase();
   syncLeague();
+  flushVotes();
 } else {
   render();
 }

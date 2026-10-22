@@ -151,3 +151,10 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .wn { color: var(--on-sv); font-weight: 700; grid-row: span 2; }
 .whos { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
 .who { white-space: nowrap; }
+
+/* feedback */
+.rate { text-align: center; font-size: 13px; color: var(--on-sv); margin-bottom: 6px; }
+.vote-row { display: grid; grid-template-columns: 56px 56px 1fr; gap: 8px; }
+.vote { height: 52px; border-radius: 99px; border: 1px solid var(--outline); font-size: 24px; background: var(--surface); }
+.vote.on { background: var(--sc); border-color: var(--secondary); }
+.vote-row .btn { min-height: 52px; }
