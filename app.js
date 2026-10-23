@@ -7,7 +7,7 @@ const T = {
     appName: 'Ассоциации', whoPlays: 'Кто играет?', adults: 'Взрослые', kids: 'Дети',
     kidsNote: 'около 10 лет', adultsNote: 'литература, кино, поговорки',
     levels: ['Лёгкий', 'Средний', 'Сложный'],
-    openFifth: 'Открыть доп. подсказку', fifthLabel: 'доп. подсказка', letter: 'Буква', clear: 'Стереть',
+    openFifth: 'Открыть доп. подсказку', openExtra: 'Открыть', fifthLabel: 'доп. подсказка', letter: 'Буква', clear: 'Стереть',
     giveUp: 'Сдаться', giveUpConfirm: 'Показать ответ? Очков за это слово не будет, серия прервётся.',
     cancel: 'Отмена', reward: 'Награда за слово', wrong: 'Не то слово, попробуйте ещё',
     correct: 'Верно!', answerWas: 'Ответ', next: 'Дальше', whyClues: 'Почему эти подсказки',
@@ -50,7 +50,7 @@ const T = {
     appName: 'Асоціації', whoPlays: 'Хто грає?', adults: 'Дорослі', kids: 'Діти',
     kidsNote: 'близько 10 років', adultsNote: 'література, кіно, приказки',
     levels: ['Легкий', 'Середній', 'Складний'],
-    openFifth: 'Відкрити дод. підказку', fifthLabel: 'дод. підказка', letter: 'Літера', clear: 'Стерти',
+    openFifth: 'Відкрити дод. підказку', openExtra: 'Відкрити', fifthLabel: 'дод. підказка', letter: 'Літера', clear: 'Стерти',
     giveUp: 'Здатися', giveUpConfirm: 'Показати відповідь? Балів за це слово не буде, серія перерветься.',
     cancel: 'Скасувати', reward: 'Нагорода за слово', wrong: 'Не те слово, спробуйте ще',
     correct: 'Правильно!', answerWas: 'Відповідь', next: 'Далі', whyClues: 'Чому ці підказки',
@@ -622,9 +622,10 @@ function viewGame() {
 
   const clue = (c, extra) => `<div class="clue${extra ? ' extra' : ''}${extra && S.popExtra ? ' pop' : ''}${c.w.length > 11 ? ' small' : ''}">${esc(cap(c.w))}</div>`;
   const last = p.clues.length - 1;
-  h += '<div class="clues">' + p.clues.slice(0, last).map(c => clue(c, false)).join('') + '</div>';
-  h += S.fifth ? clue(p.clues[last], true)
-    : `<button class="btn outline wide" data-a="fifth">${esc(x.openFifth)} &nbsp;−${Scoring.fifthCost(p.level)}</button>`;
+  // Two columns: the main clues, then the extra clue in the last cell (a closed card until opened).
+  const closed = `<button class="clue closed" data-a="fifth">${esc(x.openExtra)}<small>−${Scoring.fifthCost(p.level)}</small></button>`;
+  h += '<div class="clues">' + p.clues.slice(0, last).map(c => clue(c, false)).join('') +
+    (S.fifth ? clue(p.clues[last], true) : closed) + '</div>';
   h += `<div class="grow"></div><div class="reward">${esc(x.reward)}: ${Scoring.wordReward(p.level, S.fifth, S.locked.size)}</div>`;
   h += `<div class="slots${S.wrong ? ' wrong' : ''}" id="slots" style="--n:${S.ans.length}">` + S.slots.map((id, i) =>
     `<button class="slot${id !== null ? ' filled' : ''}${S.locked.has(i) ? ' locked' : ''}" data-a="slot" data-v="${i}">` +

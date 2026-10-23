@@ -66,7 +66,11 @@ h1 { font-size: 26px; margin: 0 0 6px; }
 .clue.extra { background: var(--sc); color: var(--on-sc); min-height: 56px; }
 .clue.pop { animation: pop .25s ease-out; }
 /* an odd last main clue (5 main clues) takes the full row */
-.clues .clue:last-child:nth-child(odd) { grid-column: 1 / -1; min-height: 56px; }
+.clues .clue:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.clue.extra { min-height: 64px; }
+.clue.closed { background: transparent; border: 2px dashed var(--outline); color: var(--primary); box-shadow: none;
+  font-size: 17px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.clue.closed small { font-size: 13px; color: var(--on-sv); font-weight: 600; }
 @keyframes pop { from { transform: scale(.9); opacity: 0; } }
 
 .btn { border-radius: 99px; padding: 12px 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
