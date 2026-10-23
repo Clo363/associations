@@ -7,11 +7,11 @@ const T = {
     appName: 'Ассоциации', whoPlays: 'Кто играет?', adults: 'Взрослые', kids: 'Дети',
     kidsNote: 'около 10 лет', adultsNote: 'литература, кино, поговорки',
     levels: ['Лёгкий', 'Средний', 'Сложный'],
-    openFifth: 'Открыть 5-ю подсказку', fifthLabel: '5-я подсказка', letter: 'Буква', clear: 'Стереть',
+    openFifth: 'Открыть доп. подсказку', fifthLabel: 'доп. подсказка', letter: 'Буква', clear: 'Стереть',
     giveUp: 'Сдаться', giveUpConfirm: 'Показать ответ? Очков за это слово не будет, серия прервётся.',
     cancel: 'Отмена', reward: 'Награда за слово', wrong: 'Не то слово, попробуйте ещё',
     correct: 'Верно!', answerWas: 'Ответ', next: 'Дальше', whyClues: 'Почему эти подсказки',
-    wordPts: 'Слово', fifthPenalty: '5-я подсказка', lettersPenalty: 'Открытые буквы',
+    wordPts: 'Слово', fifthPenalty: 'Доп. подсказка', lettersPenalty: 'Открытые буквы',
     streakBonus: 'Серия без подсказок', noPoints: 'Без очков',
     levelDone: 'Все загадки этого уровня пройдены!',
     levelDoneHint: 'Выберите другой уровень сверху или пройдите этот заново.',
@@ -39,7 +39,7 @@ const T = {
     notFound: 'Лига с таким кодом не найдена', needName: 'Введите имя', needLeagueName: 'Введите название лиги',
     nobody: 'Пока никто не прошёл ни одного слова', you: 'вы', pts: 'очк.', clean: 'без подсказок',
     gaveUp: 'сдался', hiddenWord: '• • •', hiddenHint: 'Ответы видны только для слов, которые вы уже прошли.',
-    refresh: 'Обновить', legend: '✅ без подсказок · 💡 5-я подсказка · 🔤 буквы · 🏳️ сдался',
+    refresh: 'Обновить', legend: '✅ без подсказок · 💡 доп. подсказка · 🔤 буквы · 🏳️ сдался',
     baseLabel: 'Слова в лиге', levelLabel: 'Сложность', anyLevel: 'Любая',
     packLabel: 'Набор слов', allPacks: 'Все наборы', pack: 'Набор', onlyPack: 'Только набор',
     packHint: 'Пройденные слова не повторяются. Если прогресс потерялся, выберите только новый набор.',
@@ -50,11 +50,11 @@ const T = {
     appName: 'Асоціації', whoPlays: 'Хто грає?', adults: 'Дорослі', kids: 'Діти',
     kidsNote: 'близько 10 років', adultsNote: 'література, кіно, приказки',
     levels: ['Легкий', 'Середній', 'Складний'],
-    openFifth: 'Відкрити 5-ту підказку', fifthLabel: '5-та підказка', letter: 'Літера', clear: 'Стерти',
+    openFifth: 'Відкрити дод. підказку', fifthLabel: 'дод. підказка', letter: 'Літера', clear: 'Стерти',
     giveUp: 'Здатися', giveUpConfirm: 'Показати відповідь? Балів за це слово не буде, серія перерветься.',
     cancel: 'Скасувати', reward: 'Нагорода за слово', wrong: 'Не те слово, спробуйте ще',
     correct: 'Правильно!', answerWas: 'Відповідь', next: 'Далі', whyClues: 'Чому ці підказки',
-    wordPts: 'Слово', fifthPenalty: '5-та підказка', lettersPenalty: 'Відкриті літери',
+    wordPts: 'Слово', fifthPenalty: 'Дод. підказка', lettersPenalty: 'Відкриті літери',
     streakBonus: 'Серія без підказок', noPoints: 'Без балів',
     levelDone: 'Усі загадки цього рівня пройдено!',
     levelDoneHint: 'Оберіть інший рівень угорі або пройдіть цей знову.',
@@ -82,7 +82,7 @@ const T = {
     notFound: 'Лігу з таким кодом не знайдено', needName: 'Введіть ім\'я', needLeagueName: 'Введіть назву ліги',
     nobody: 'Поки ніхто не пройшов жодного слова', you: 'ви', pts: 'бал.', clean: 'без підказок',
     gaveUp: 'здався', hiddenWord: '• • •', hiddenHint: 'Відповіді видно лише для слів, які ви вже пройшли.',
-    refresh: 'Оновити', legend: '✅ без підказок · 💡 5-та підказка · 🔤 літери · 🏳️ здався',
+    refresh: 'Оновити', legend: '✅ без підказок · 💡 дод. підказка · 🔤 літери · 🏳️ здався',
     baseLabel: 'Слова в лізі', levelLabel: 'Складність', anyLevel: 'Будь-яка',
     packLabel: 'Набір слів', allPacks: 'Усі набори', pack: 'Набір', onlyPack: 'Лише набір',
     packHint: 'Пройдені слова не повторюються. Якщо прогрес загубився, оберіть лише новий набір.',
@@ -289,6 +289,7 @@ const canRevealLetter = () => S.puzzle && S.slots.length - S.locked.size > 1;
 function openFifth() {
   if (!S.puzzle || S.fifth) return;
   S.fifth = true;
+  S.popExtra = true;
   store.set(`h5_${ns()}_${S.puzzle.answer}`, true);
 }
 
@@ -619,9 +620,10 @@ function viewGame() {
   }
   if (!p) return h + '</div>';
 
-  const clue = (c, extra) => `<div class="clue${extra ? ' extra' : ''}${c.w.length > 11 ? ' small' : ''}">${esc(cap(c.w))}</div>`;
-  h += '<div class="clues">' + p.clues.slice(0, 4).map(c => clue(c, false)).join('') + '</div>';
-  h += S.fifth ? clue(p.clues[4], true)
+  const clue = (c, extra) => `<div class="clue${extra ? ' extra' : ''}${extra && S.popExtra ? ' pop' : ''}${c.w.length > 11 ? ' small' : ''}">${esc(cap(c.w))}</div>`;
+  const last = p.clues.length - 1;
+  h += '<div class="clues">' + p.clues.slice(0, last).map(c => clue(c, false)).join('') + '</div>';
+  h += S.fifth ? clue(p.clues[last], true)
     : `<button class="btn outline wide" data-a="fifth">${esc(x.openFifth)} &nbsp;−${Scoring.fifthCost(p.level)}</button>`;
   h += `<div class="grow"></div><div class="reward">${esc(x.reward)}: ${Scoring.wordReward(p.level, S.fifth, S.locked.size)}</div>`;
   h += `<div class="slots${S.wrong ? ' wrong' : ''}" id="slots" style="--n:${S.ans.length}">` + S.slots.map((id, i) =>
@@ -654,7 +656,7 @@ function viewResult() {
       (r.streakBonus ? line(`${x.streakBonus} ×${r.streak}`, `+${r.streakBonus}`) : '') + '</div>';
   }
   h += `<h2>${esc(x.whyClues)}</h2>` + p.clues.map((c, i) =>
-    `<div class="ex${i === 4 ? ' extra' : ''}"><b>${esc(cap(c.w))}</b>${i === 4 ? `<small>· ${esc(x.fifthLabel)}</small>` : ''}<p>${esc(c.e)}</p></div>`
+    `<div class="ex${i === p.clues.length - 1 ? ' extra' : ''}"><b>${esc(cap(c.w))}</b>${i === p.clues.length - 1 ? `<small>· ${esc(x.fifthLabel)}</small>` : ''}<p>${esc(c.e)}</p></div>`
   ).join('');
   const vote = (store.get('votes', {}))[voteKey(p)] || 0;
   h += `</div><div class="grow"></div><div class="bottom sticky"><div class="rate">${esc(x.rate)}</div><div class="vote-row">
@@ -807,6 +809,7 @@ function render() {
     const el = $app.querySelector(`[data-f="${f}"]`);
     if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
+  S.popExtra = false;
   if (S.shake) {
     S.shake = false;
     const el = document.getElementById('slots');
