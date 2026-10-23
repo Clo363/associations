@@ -123,6 +123,9 @@ const POOL = {
   uk: 'ОООООАААААИИИИНННЕЕЕІІІТТТРРРВВВССКККЛЛДДМММУУППЯЗЬБГЧХЙЖШЮЦЄЇЩФҐ',
 };
 
+/** Leagues created from this moment use the smaller series bonus. */
+const STREAK_V2 = 1792758808000;
+
 const Scoring = {
   base: lv => lv * 10,
   fifthCost: lv => Math.floor(lv * 1.5),
@@ -132,7 +135,8 @@ const Scoring = {
     const r = this.base(lv) - (fifth ? this.fifthCost(lv) : 0) - letters * this.letterCost(lv);
     return Math.max(this.minReward(lv), r);
   },
-  streakBonus: streak => Math.max(0, Math.min(streak - 1, 5) * 2),
+  /** Series bonus +1, +2, +3, +4. Leagues created before the change keep the old +2 … +10 so their scores stay comparable. */
+  streakBonus: (streak, old) => (old ? Math.max(0, Math.min(streak - 1, 5) * 2) : Math.max(0, Math.min(streak - 1, 4))),
 };
 
 // localStorage can be unavailable (private mode etc.) — the game still works, just forgets.
@@ -370,7 +374,7 @@ function solve() {
     wordPts: Scoring.wordReward(p.level, S.fifth, S.locked.size),
     fifthPenalty: S.fifth ? Scoring.fifthCost(p.level) : 0,
     letters: S.locked.size, lettersPenalty: S.locked.size * Scoring.letterCost(p.level),
-    streak, streakBonus: clean ? Scoring.streakBonus(streak) : 0,
+    streak, streakBonus: clean ? Scoring.streakBonus(streak, S.league && !(S.league.createdAt >= STREAK_V2)) : 0,
   };
   r.total = r.wordPts + r.streakBonus;
   S.score += r.total;
@@ -470,7 +474,7 @@ async function joinLeague(code, name) {
   if (!info) throw Object.assign(new Error('not found'), { notFound: true });
   const key = playerKey(name);
   const server = await fetchPlayer(code, key);
-  S.league = { code, name: info.name, base: info.base, level: info.level || 0, packs: info.packs || 0, me: { key, name: server ? server.name : name.trim() } };
+  S.league = { code, name: info.name, base: info.base, level: info.level || 0, packs: info.packs || 0, createdAt: info.createdAt || 0, me: { key, name: server ? server.name : name.trim() } };
   const merged = Object.assign({}, (server && server.results) || {}, store.get(lresKey(S.league), {}));
   store.set('league', S.league);
   store.set('myName', name.trim());
