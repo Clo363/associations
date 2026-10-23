@@ -42,6 +42,7 @@ const T = {
     refresh: 'Обновить', legend: '✅ без подсказок · 💡 доп. подсказка · 🔤 буквы · 🏳️ сдался',
     baseLabel: 'Слова в лиге', levelLabel: 'Сложность', anyLevel: 'Любая',
     packLabel: 'Набор слов', allPacks: 'Все наборы', pack: 'Набор', onlyPack: 'Только набор',
+    packsLabel: 'Наборы слов', packsHint: 'Снимите наборы, которые все уже прошли.',
     packHint: 'Пройденные слова не повторяются. Если прогресс потерялся, выберите только новый набор.',
     newPack: 'Новый набор: +{n} сложных слов! Выбрать набор можно в настройках.',
     rate: 'Как вам загадка?', like: 'Нравится', dislike: 'Не нравится',
@@ -85,13 +86,36 @@ const T = {
     refresh: 'Оновити', legend: '✅ без підказок · 💡 дод. підказка · 🔤 літери · 🏳️ здався',
     baseLabel: 'Слова в лізі', levelLabel: 'Складність', anyLevel: 'Будь-яка',
     packLabel: 'Набір слів', allPacks: 'Усі набори', pack: 'Набір', onlyPack: 'Лише набір',
+    packsLabel: 'Набори слів', packsHint: 'Зніміть набори, які всі вже пройшли.',
     packHint: 'Пройдені слова не повторюються. Якщо прогрес загубився, оберіть лише новий набір.',
     newPack: 'Новий набір: +{n} складних слів! Обрати набір можна в налаштуваннях.',
     rate: 'Як вам загадка?', like: 'Подобається', dislike: 'Не подобається',
   },
 };
 
-const BASE_NAMES = { ru_adult: 'RU · взрослые', ru_kids: 'RU · дети', uk_adult: 'UA · дорослі', uk_kids: 'UA · діти' };
+const BASE_NAMES = {
+  ru_adult: 'RU · взрослые', ru_kids: 'RU · дети', uk_adult: 'UA · дорослі', uk_kids: 'UA · діти',
+  ru_all: 'RU · взрослые + дети', uk_all: 'UA · дорослі + діти',
+};
+/** Word sets a league can use: the four bases plus adult+kids mixes of one language. */
+const LEAGUE_BASES = ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids', 'ru_all', 'uk_all'];
+/** Files behind a word set: a mix is the adult and the kids base of the same language. */
+const baseParts = key => (key.endsWith('_all') ? [key.slice(0, 2) + '_adult', key.slice(0, 2) + '_kids'] : [key]);
+
+/** Loads a word set; each puzzle remembers its own base (for votes). In a mix an answer present in both bases is kept once. */
+async function ensureData(key) {
+  if (S.data[key]) return;
+  for (const part of baseParts(key)) {
+    if (S.data[part]) continue;
+    const r = await fetch('data/' + part + '.json');
+    if (!r.ok) throw new Error(r.status);
+    S.data[part] = (await r.json()).map(p => Object.assign(p, { _base: part }));
+  }
+  if (key.endsWith('_all')) {
+    const seen = new Set();
+    S.data[key] = baseParts(key).flatMap(b => S.data[b]).filter(p => !seen.has(p.answer) && seen.add(p.answer));
+  }
+}
 
 // Decoy letters, roughly by frequency (same as the Android app).
 const POOL = {
@@ -101,8 +125,8 @@ const POOL = {
 
 const Scoring = {
   base: lv => lv * 10,
-  fifthCost: lv => lv * 2,
-  letterCost: lv => lv * 2,
+  fifthCost: lv => Math.floor(lv * 1.5),
+  letterCost: lv => Math.floor(lv * 1.5),
   minReward: lv => lv,
   wordReward(lv, fifth, letters) {
     const r = this.base(lv) - (fifth ? this.fifthCost(lv) : 0) - letters * this.letterCost(lv);
@@ -190,12 +214,27 @@ const packOf = p => p.pack || 1;
 /** Pack numbers present in a loaded base, e.g. [1, 2]. */
 const packsIn = base => [...new Set((S.data[base] || []).map(packOf))].sort((a, b) => a - b);
 /** Pack filter in effect: the league's, or the player's choice in free play (0 = all packs). */
-const packFilter = () => {
-  const k = S.league ? S.league.packs || 0 : S.pack;
-  return packsIn(curBase()).includes(k) ? k : 0;
+const packFilter = () => (packsIn(curBase()).includes(S.pack) ? S.pack : 0);
+/** League pack setting -> set of packs, or null for all: 0 = all, N = only pack N, 1000 + bitmask = several. */
+const decodePacks = v => {
+  if (!v) return null;
+  if (v < 1000) return new Set([v]);
+  return new Set([...Array(20).keys()].filter(k => (v - 1000) & (1 << k)));
 };
-/** Puzzles of the current base that the active pack filter allows. */
-const pool = () => { const k = packFilter(); return all().filter(p => !k || packOf(p) === k); };
+const encodePacks = (chosen, available) => {
+  const sel = available.filter(k => chosen.has(k));
+  if (!sel.length || sel.length === available.length) return 0;
+  return sel.length === 1 ? sel[0] : 1000 + sel.reduce((m, k) => m | (1 << k), 0);
+};
+/** Packs allowed now (null = all): the league's choice, or the player's in free play. */
+const allowedPacks = () => {
+  const set = S.league ? decodePacks(S.league.packs || 0) : (packFilter() ? new Set([packFilter()]) : null);
+  if (!set) return null;
+  const has = packsIn(curBase()).filter(k => set.has(k));
+  return has.length ? new Set(has) : null;
+};
+/** Puzzles of the current word set that the active pack filter allows. */
+const pool = () => { const set = allowedPacks(); return all().filter(p => !set || set.has(packOf(p))); };
 
 /**
  * The same word order for every member of a league: each pack is shuffled with a seed from the league code
@@ -223,9 +262,7 @@ async function openBase() {
   if (!S.data[key]) {
     S.loading = true; S.loadError = false; render();
     try {
-      const r = await fetch('data/' + key + '.json');
-      if (!r.ok) throw new Error(r.status);
-      S.data[key] = await r.json();
+      await ensureData(key);
     } catch (e) {
       S.loadError = true;
     }
@@ -236,6 +273,11 @@ async function openBase() {
 }
 
 function loadCurrent() {
+  // The chosen packs may have no words on this level (e.g. pack 2 is hard only): move to a level that has some.
+  if (!pool().some(p => p.level === S.level)) {
+    const lv = [1, 2, 3].find(l => pool().some(p => p.level === l));
+    if (lv) S.level = lv;
+  }
   const list = pool().filter(p => p.level === S.level);
   let p = null;
   if (S.league) {
@@ -435,7 +477,7 @@ async function joinLeague(code, name) {
   store.set(lresKey(S.league), merged);
   store.set(dirtyKey(S.league), true);
   if (!S.lang || !S.aud) {
-    S.lang = info.base.slice(0, 2); S.aud = info.base.split('_')[1];
+    S.lang = info.base.slice(0, 2); S.aud = info.base.endsWith('_kids') ? 'kids' : 'adult';
     store.set('lang', S.lang); store.set('audience', S.aud);
   }
   await syncLeague();
@@ -469,7 +511,7 @@ async function startInvite(code) {
     const info = await fetchLeague(code);
     S.invite = { code, info, loading: false, notFound: !info };
     if (info && (!S.lang || !S.aud)) {
-      S.lang = info.base.slice(0, 2); S.aud = info.base.split('_')[1];
+      S.lang = info.base.slice(0, 2); S.aud = info.base.endsWith('_kids') ? 'kids' : 'adult';
       store.set('lang', S.lang); store.set('audience', S.aud);
     }
   } catch (e) {
@@ -517,7 +559,7 @@ async function busy(fn) {
 
 // ------------------------------------------------------------------ feedback
 
-const voteKey = p => `${curBase()}|${p.answer}`;
+const voteKey = p => `${p._base || curBase()}|${p.answer}`;
 
 /** Likes/dislikes on the result screen; kept locally and sent to the server (queued when offline). */
 function castVote(v) {
@@ -716,19 +758,22 @@ function viewLeague() {
   }
 
   if (!S.league) {
-    const baseIdx = BASES.indexOf(S.form.base || curBase());
-    const createPacks = packsIn(S.form.base || curBase());
+    const formBase = S.form.base || curBase();
+    const baseIdx = LEAGUE_BASES.indexOf(formBase);
+    const createPacks = packsIn(formBase);
+    const chosen = S.form.packSel || new Set(createPacks);
     return h + `<p class="muted">${esc(x.leagueIntro)}</p>
       <div class="panel"><h2>${esc(x.createLeague)}</h2>
         ${input('lname', x.leagueName, 'maxlength="40"')}
         <p class="label">${esc(x.baseLabel)}</p>
-        <div class="grid2">${BASES.map((b, i) =>
+        <div class="grid2">${LEAGUE_BASES.map((b, i) =>
           `<button class="opt${i === baseIdx ? ' on' : ''}" data-a="pickBase" data-v="${b}">${esc(BASE_NAMES[b])}</button>`).join('')}</div>
         <p class="label">${esc(x.levelLabel)}</p>
         <div class="grid2">${[0, 1, 2, 3].map(lv =>
           `<button class="opt${lv === S.form.level ? ' on' : ''}" data-a="pickLevel" data-v="${lv}">${esc(levelText(x, lv))}</button>`).join('')}</div>
-        ${createPacks.length > 1 ? `<p class="label">${esc(x.packLabel)}</p><div class="grid2">${[0, ...createPacks].map(k =>
-          `<button class="opt${k === S.form.packs ? ' on' : ''}" data-a="pickPacks" data-v="${k}">${esc(k ? `${x.onlyPack} ${k}` : x.allPacks)}</button>`).join('')}</div>` : ''}
+        ${createPacks.length > 1 ? `<p class="label">${esc(x.packsLabel)}</p><div class="grid2">${createPacks.map(k =>
+          `<button class="opt${chosen.has(k) ? ' on' : ''}" data-a="togglePack" data-v="${k}">${chosen.has(k) ? '✓ ' : ''}${esc(x.pack)} ${k}</button>`).join('')}</div>
+          <p class="hint">${esc(x.packsHint)}</p>` : ''}
         ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
         <button class="btn filled wide" data-a="create"${dis}>${esc(S.busy ? x.loading : x.create)}</button></div>
       <div class="panel"><h2>${esc(x.joinLeague)}</h2>
@@ -740,7 +785,7 @@ function viewLeague() {
   }
 
   const L = S.league;
-  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(levelText(x, fixedLevel()))}${L.packs ? ` · ${esc(x.pack)} ${L.packs}` : ''} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
+  h += `<h2 class="lname">${esc(L.name)}</h2><p class="muted">${esc(BASE_NAMES[L.base])} · ${esc(levelText(x, fixedLevel()))}${decodePacks(L.packs) ? ` · ${esc(decodePacks(L.packs).size > 1 ? x.packsLabel : x.pack)} ${[...decodePacks(L.packs)].join(', ')}` : ''} · ${esc(x.code)}: <b>${esc(L.code)}</b></p>
     <div class="actions two"><button class="btn tonal" data-a="invite">${esc(x.invite)}</button>
     <button class="btn filled" data-a="back">${esc(x.play)}</button></div>`;
   if (S.toast) h += `<p class="hint center-text">${esc(S.toast)}</p>`;
@@ -854,9 +899,18 @@ const actions = {
   closeDialog: () => { S.dialog = null; },
   // league
   league: openLeagueScreen,
-  pickBase: v => { S.form.base = v; },
+  pickBase: v => {
+    S.form.base = v; S.form.packSel = null;
+    if (!S.data[v]) ensureData(v).then(render).catch(() => {});
+  },
   pickLevel: v => { S.form.level = Number(v); },
-  pickPacks: v => { S.form.packs = Number(v); },
+  togglePack: v => {
+    const all = packsIn(S.form.base || curBase());
+    const set = new Set(S.form.packSel || all);
+    const k = Number(v);
+    if (set.has(k)) set.delete(k); else set.add(k);
+    if (set.size) S.form.packSel = set; // at least one pack stays selected
+  },
   setPack: v => {
     const opts = [0, ...packsIn(curBase())];
     S.pack = opts[Number(v)] || 0; store.set('pack', S.pack);
@@ -872,7 +926,8 @@ const actions = {
     if (!name) { S.formError = x.needName; return; }
     busy(async () => {
       const base = S.form.base || curBase();
-      const code = await createLeagueDoc(lname, base, S.form.level, packsIn(base).includes(S.form.packs) ? S.form.packs : 0, name);
+      const avail = packsIn(base);
+      const code = await createLeagueDoc(lname, base, S.form.level, encodePacks(S.form.packSel || new Set(avail), avail), name);
       await joinLeague(code, name);
       openLeagueScreen();
     });

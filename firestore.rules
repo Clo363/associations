@@ -10,7 +10,7 @@ service cloud.firestore {
         && request.resource.data.get('packs', 0) is int
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
-        && request.resource.data.base in ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids'];
+        && request.resource.data.base in ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids', 'ru_all', 'uk_all'];
 
       match /players/{pid} {
         allow get, list: if request.auth != null;
