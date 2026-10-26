@@ -25,12 +25,12 @@ service cloud.firestore {
       }
     }
 
-    // Likes/dislikes: one document per device and puzzle, id starts with the device's user id.
+    // Likes/dislikes: one document per device and clue, id starts with the device's user id.
     match /feedback/{fid} {
       allow get, list: if request.auth != null;
       allow create, update: if request.auth != null
         && fid.matches(request.auth.uid + '_.*')
-        && request.resource.data.keys().hasOnly(['base', 'answer', 'vote', 't'])
+        && request.resource.data.keys().hasOnly(['base', 'answer', 'i', 'clue', 'vote', 't'])
         && request.resource.data.base in ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids']
         && request.resource.data.answer is string && request.resource.data.answer.size() <= 20
         && request.resource.data.vote in [1, 0, -1];

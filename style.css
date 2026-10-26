@@ -171,3 +171,9 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   border-radius: 12px; padding: 8px 8px 8px 12px; margin-bottom: 8px; font-size: 14px; }
 .banner span { flex: 1; }
 .banner button { width: 32px; height: 32px; border-radius: 50%; font-size: 16px; }
+
+/* per-clue votes */
+.ex { display: flex; gap: 8px; align-items: center; }
+.ex-text { flex: 1; min-width: 0; }
+.ex-vote { display: flex; flex-direction: column; gap: 6px; }
+.ex-vote .vote { width: 40px; height: 36px; font-size: 18px; }

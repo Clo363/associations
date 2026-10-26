@@ -45,7 +45,7 @@ const T = {
     packsLabel: 'Наборы слов', packsHint: 'Снимите наборы, которые все уже прошли.',
     packHint: 'Пройденные слова не повторяются. Если прогресс потерялся, выберите только новый набор.',
     newPack: 'Новый набор: +{n} сложных слов! Выбрать набор можно в настройках.',
-    rate: 'Как вам загадка?', like: 'Нравится', dislike: 'Не нравится',
+    rate: 'Оцените подсказки: удачные 👍, неудачные 👎', like: 'Нравится', dislike: 'Не нравится',
   },
   uk: {
     appName: 'Асоціації', whoPlays: 'Хто грає?', adults: 'Дорослі', kids: 'Діти',
@@ -89,7 +89,7 @@ const T = {
     packsLabel: 'Набори слів', packsHint: 'Зніміть набори, які всі вже пройшли.',
     packHint: 'Пройдені слова не повторюються. Якщо прогрес загубився, оберіть лише новий набір.',
     newPack: 'Новий набір: +{n} складних слів! Обрати набір можна в налаштуваннях.',
-    rate: 'Як вам загадка?', like: 'Подобається', dislike: 'Не подобається',
+    rate: 'Оцініть підказки: вдалі 👍, невдалі 👎', like: 'Подобається', dislike: 'Не подобається',
   },
 };
 
@@ -563,19 +563,20 @@ async function busy(fn) {
 
 // ------------------------------------------------------------------ feedback
 
-const voteKey = p => `${p._base || curBase()}|${p.answer}`;
+/** Local key of a vote on clue i of a puzzle. */
+const voteKey = (p, i) => `${p._base || curBase()}|${p.answer}|${i}`;
 
 /** Likes/dislikes on the result screen; kept locally and sent to the server (queued when offline). */
-function castVote(v) {
+function castVote(i, v) {
   const p = S.result && S.result.puzzle;
-  if (!p) return;
+  if (!p || !p.clues[i]) return;
   const votes = store.get('votes', {});
-  const key = voteKey(p);
+  const key = voteKey(p, i);
   const vote = votes[key] === v ? 0 : v; // tapping the same thumb again withdraws the vote
   votes[key] = vote;
   store.set('votes', votes);
   const pending = store.get('votesPending', {});
-  pending[key] = vote;
+  pending[key] = { vote, clue: p.clues[i].w };
   store.set('votesPending', pending);
   flushVotes();
 }
@@ -586,12 +587,14 @@ async function flushVotes() {
   flushing = true;
   try {
     const pending = store.get('votesPending', {});
-    for (const [key, vote] of Object.entries(pending)) {
-      const [base, answer] = key.split('|');
-      await saveVote(base, answer, vote);
+    for (const [key, item] of Object.entries(pending)) {
+      const [base, answer, i] = key.split('|');
+      if (i === undefined || typeof item !== 'object') { delete pending[key]; continue; } // old whole-puzzle vote
+      await saveVote(base, answer, Number(i), item.clue, item.vote);
       const now = store.get('votesPending', {});
-      if (now[key] === vote) { delete now[key]; store.set('votesPending', now); }
+      if (now[key] && now[key].vote === item.vote) { delete now[key]; store.set('votesPending', now); }
     }
+    store.set('votesPending', Object.fromEntries(Object.entries(store.get('votesPending', {})).filter(([k]) => k.split('|').length === 3)));
   } catch (e) {
     // offline or server unavailable: stays queued
   }
@@ -702,14 +705,15 @@ function viewResult() {
       (r.letters ? line(`${x.lettersPenalty} ×${r.letters}`, `−${r.lettersPenalty}`) : '') +
       (r.streakBonus ? line(`${x.streakBonus} ×${r.streak}`, `+${r.streakBonus}`) : '') + '</div>';
   }
-  h += `<h2>${esc(x.whyClues)}</h2>` + p.clues.map((c, i) =>
-    `<div class="ex${i === p.clues.length - 1 ? ' extra' : ''}"><b>${esc(cap(c.w))}</b>${i === p.clues.length - 1 ? `<small>· ${esc(x.fifthLabel)}</small>` : ''}<p>${esc(c.e)}</p></div>`
-  ).join('');
-  const vote = (store.get('votes', {}))[voteKey(p)] || 0;
-  h += `</div><div class="grow"></div><div class="bottom sticky"><div class="rate">${esc(x.rate)}</div><div class="vote-row">
-    <button class="vote${vote === 1 ? ' on' : ''}" data-a="vote" data-v="1" aria-label="${esc(x.like)}">👍</button>
-    <button class="vote${vote === -1 ? ' on' : ''}" data-a="vote" data-v="-1" aria-label="${esc(x.dislike)}">👎</button>
-    <button class="btn filled" data-a="next">${esc(x.next)}</button></div></div></div>`;
+  const votes = store.get('votes', {});
+  h += `<h2>${esc(x.whyClues)}</h2><p class="hint">${esc(x.rate)}</p>` + p.clues.map((c, i) => {
+    const v = votes[voteKey(p, i)] || 0;
+    return `<div class="ex${i === p.clues.length - 1 ? ' extra' : ''}"><div class="ex-text"><b>${esc(cap(c.w))}</b>` +
+      `${i === p.clues.length - 1 ? `<small>· ${esc(x.fifthLabel)}</small>` : ''}<p>${esc(c.e)}</p></div>` +
+      `<div class="ex-vote"><button class="vote${v === 1 ? ' on' : ''}" data-a="vote" data-v="${i}:1" aria-label="${esc(x.like)}">👍</button>` +
+      `<button class="vote${v === -1 ? ' on' : ''}" data-a="vote" data-v="${i}:-1" aria-label="${esc(x.dislike)}">👎</button></div></div>`;
+  }).join('');
+  h += `</div><div class="grow"></div><div class="bottom sticky"><button class="btn filled wide" data-a="next">${esc(x.next)}</button></div></div>`;
   return h;
 }
 
@@ -889,7 +893,7 @@ const actions = {
   giveup: () => { S.dialog = 'giveup'; },
   confirmGiveUp: () => { S.dialog = null; giveUp(); },
   next: () => { S.result = null; S.screen = 'game'; loadCurrent(); },
-  vote: v => castVote(Number(v)),
+  vote: v => { const [i, d] = v.split(':').map(Number); castVote(i, d); },
   settings: () => { S.screen = 'settings'; window.scrollTo(0, 0); },
   back: () => {
     S.screen = S.lang && S.aud ? 'game' : 'onboard';

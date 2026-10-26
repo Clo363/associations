@@ -81,11 +81,11 @@ async function myUid() {
   return JSON.parse(decodeURIComponent(escape(atob(b64)))).user_id;
 }
 
-/** One vote per device and puzzle: 1 = like, -1 = dislike, 0 = withdrawn. No names are stored. */
-async function saveVote(base, answer, vote) {
+/** One vote per device and clue: 1 = like, -1 = dislike, 0 = withdrawn. No names are stored. */
+async function saveVote(base, answer, i, clue, vote) {
   const uid = await myUid();
-  await fs('PATCH', 'feedback/' + encodeURIComponent(`${uid}_${base}_${answer}`), {
-    fields: { base: enc(base), answer: enc(answer), vote: enc(vote), t: enc(Date.now()) },
+  await fs('PATCH', 'feedback/' + encodeURIComponent(`${uid}_${base}_${answer}_${i}`), {
+    fields: { base: enc(base), answer: enc(answer), i: enc(i), clue: enc(clue), vote: enc(vote), t: enc(Date.now()) },
   });
 }
 
