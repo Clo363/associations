@@ -13,6 +13,8 @@ const T = {
     correct: 'Верно!', answerWas: 'Ответ', next: 'Дальше', whyClues: 'Почему эти подсказки',
     wordPts: 'Слово', fifthPenalty: 'Доп. подсказка', lettersPenalty: 'Открытые буквы',
     streakBonus: 'Серия без подсказок', noPoints: 'Без очков',
+    kidsBonus: 'Детский бонус ×1.5', whoAreYou: 'Кто вы в семейной лиге?', iAmAdult: 'Взрослый', iAmKid: 'Ребёнок',
+    familyHint: 'В семейной лиге дети отгадывают детские слова, взрослые — взрослые, а очки детей умножаются на 1.5.',
     levelDone: 'Все загадки этого уровня пройдены!',
     levelDoneHint: 'Выберите другой уровень сверху или пройдите этот заново.',
     levelDoneLeague: 'Выберите другой уровень сверху.',
@@ -57,6 +59,8 @@ const T = {
     correct: 'Правильно!', answerWas: 'Відповідь', next: 'Далі', whyClues: 'Чому ці підказки',
     wordPts: 'Слово', fifthPenalty: 'Дод. підказка', lettersPenalty: 'Відкриті літери',
     streakBonus: 'Серія без підказок', noPoints: 'Без балів',
+    kidsBonus: 'Дитячий бонус ×1.5', whoAreYou: 'Хто ви в родинній лізі?', iAmAdult: 'Дорослий', iAmKid: 'Дитина',
+    familyHint: 'У родинній лізі діти вгадують дитячі слова, дорослі — дорослі, а бали дітей множаться на 1.5.',
     levelDone: 'Усі загадки цього рівня пройдено!',
     levelDoneHint: 'Оберіть інший рівень угорі або пройдіть цей знову.',
     levelDoneLeague: 'Оберіть інший рівень угорі.',
@@ -96,11 +100,18 @@ const T = {
 const BASE_NAMES = {
   ru_adult: 'RU · взрослые', ru_kids: 'RU · дети', uk_adult: 'UA · дорослі', uk_kids: 'UA · діти',
   ru_all: 'RU · взрослые + дети', uk_all: 'UA · дорослі + діти',
+  ru_family: 'RU · семья: детям детские, взрослым взрослые', uk_family: 'UA · родина: дітям дитячі, дорослим дорослі',
 };
 /** Word sets a league can use: the four bases plus adult+kids mixes of one language. */
-const LEAGUE_BASES = ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids', 'ru_all', 'uk_all'];
+/** Family leagues need the updated server rules; switch on once they are published. */
+const FAMILY_ENABLED = false;
+const LEAGUE_BASES = ['ru_adult', 'ru_kids', 'uk_adult', 'uk_kids', 'ru_all', 'uk_all']
+  .concat(FAMILY_ENABLED ? ['ru_family', 'uk_family'] : []);
+/** Points of a kid in a family league are multiplied by this, so kids can win against adults. */
+const KIDS_FACTOR = 1.5;
+const isFamily = base => !!base && base.endsWith('_family');
 /** Files behind a word set: a mix is the adult and the kids base of the same language. */
-const baseParts = key => (key.endsWith('_all') ? [key.slice(0, 2) + '_adult', key.slice(0, 2) + '_kids'] : [key]);
+const baseParts = key => (key.endsWith('_all') || isFamily(key) ? [key.slice(0, 2) + '_adult', key.slice(0, 2) + '_kids'] : [key]);
 
 /** Loads a word set; each puzzle remembers its own base (for votes). In a mix an answer present in both bases is kept once. */
 async function ensureData(key) {
@@ -164,7 +175,11 @@ const S = {
 
 const t = () => T[S.lang || 'ru'];
 /** Word base in use: the league's while in a league, otherwise the player's own choice. */
-const curBase = () => (S.league ? S.league.base : S.lang + '_' + S.aud);
+const curBase = () => {
+  if (!S.league) return S.lang + '_' + S.aud;
+  if (isFamily(S.league.base)) return S.league.base.slice(0, 2) + (S.league.me.role === 'kids' ? '_kids' : '_adult');
+  return S.league.base;
+};
 /** Namespace for progress keys, so league progress never mixes with free play. */
 const ns = () => (S.league ? `L_${S.league.code}_${S.league.me.key}` : curBase());
 /** Local league results and the unsent flag, per league and per player (a phone may be shared). */
@@ -377,6 +392,10 @@ function solve() {
     streak, streakBonus: clean ? Scoring.streakBonus(streak, S.league && !(S.league.createdAt >= STREAK_V2)) : 0,
   };
   r.total = r.wordPts + r.streakBonus;
+  if (S.league && isFamily(S.league.base) && S.league.me.role === 'kids') {
+    r.kidsBonus = Math.round(r.total * (KIDS_FACTOR - 1));
+    r.total += r.kidsBonus;
+  }
   S.score += r.total;
   S.streak = streak;
   finish(r);
@@ -455,7 +474,7 @@ async function pushResults(L) {
       store.set(dirty, false);
       const server = await fetchPlayer(L.code, L.me.key);
       const merged = Object.assign({}, (server && server.results) || {}, store.get(lres, {}));
-      await savePlayer(L.code, L.me.key, L.me.name, merged);
+      await savePlayer(L.code, L.me.key, L.me.name, merged, L.me.role);
       store.set(lres, Object.assign(merged, store.get(lres, {})));
     }
     if (S.league && S.league.code === L.code) {
@@ -469,12 +488,13 @@ async function pushResults(L) {
   }
 }
 
-async function joinLeague(code, name) {
+async function joinLeague(code, name, role) {
   const info = await fetchLeague(code);
   if (!info) throw Object.assign(new Error('not found'), { notFound: true });
   const key = playerKey(name);
   const server = await fetchPlayer(code, key);
-  S.league = { code, name: info.name, base: info.base, level: info.level || 0, packs: info.packs || 0, createdAt: info.createdAt || 0, me: { key, name: server ? server.name : name.trim() } };
+  const myRole = isFamily(info.base) ? ((server && server.role) || role || 'adult') : undefined;
+  S.league = { code, name: info.name, base: info.base, level: info.level || 0, packs: info.packs || 0, createdAt: info.createdAt || 0, me: { key, name: server ? server.name : name.trim(), role: myRole } };
   const merged = Object.assign({}, (server && server.results) || {}, store.get(lresKey(S.league), {}));
   store.set('league', S.league);
   store.set('myName', name.trim());
@@ -703,7 +723,8 @@ function viewResult() {
       line(`${x.wordPts} · ${x.levels[p.level - 1]}`, `+${Scoring.base(p.level)}`) +
       (r.fifthPenalty ? line(x.fifthPenalty, `−${r.fifthPenalty}`) : '') +
       (r.letters ? line(`${x.lettersPenalty} ×${r.letters}`, `−${r.lettersPenalty}`) : '') +
-      (r.streakBonus ? line(`${x.streakBonus} ×${r.streak}`, `+${r.streakBonus}`) : '') + '</div>';
+      (r.streakBonus ? line(`${x.streakBonus} ×${r.streak}`, `+${r.streakBonus}`) : '') +
+      (r.kidsBonus ? line(x.kidsBonus, `+${r.kidsBonus}`) : '') + '</div>';
   }
   const votes = store.get('votes', {});
   h += `<h2>${esc(x.whyClues)}</h2><p class="hint">${esc(x.rate)}</p>` + p.clues.map((c, i) => {
@@ -761,6 +782,7 @@ function viewLeague() {
     return h + `<div class="panel"><p class="muted">${esc(x.invitedTo)}</p><h2 class="lname">${esc(iv.info.name)}</h2>
       <p class="muted">${esc(x.baseLabel)}: ${esc(BASE_NAMES[iv.info.base])} · ${esc(x.levelLabel)}: ${esc(levelText(x, iv.info.level || 0))}</p>
       ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
+      ${isFamily(iv.info.base) ? rolePicker(x) : ''}
       <p class="hint">${esc(x.joinHint)}</p>${err}
       <button class="btn filled wide" data-a="joinInvite"${dis}>${esc(S.busy ? x.loading : x.join)}</button></div></div>`;
   }
@@ -783,10 +805,12 @@ function viewLeague() {
           `<button class="opt${chosen.has(k) ? ' on' : ''}" data-a="togglePack" data-v="${k}">${chosen.has(k) ? '✓ ' : ''}${esc(x.pack)} ${k}</button>`).join('')}</div>
           <p class="hint">${esc(x.packsHint)}</p>` : ''}
         ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
+        ${isFamily(formBase) ? rolePicker(x) : ''}
         <button class="btn filled wide" data-a="create"${dis}>${esc(S.busy ? x.loading : x.create)}</button></div>
       <div class="panel"><h2>${esc(x.joinLeague)}</h2>
         ${input('code', x.code, 'maxlength="8" autocapitalize="characters" autocomplete="off"')}
         ${input('name', x.yourName, 'maxlength="30" autocomplete="nickname"')}
+        ${rolePicker(x)}
         <p class="hint">${esc(x.joinHint)}</p>
         <button class="btn outline wide" data-a="joinCode"${dis}>${esc(S.busy ? x.loading : x.join)}</button></div>
       ${err}</div>`;
@@ -809,7 +833,7 @@ function viewLeague() {
       const me = p.key === L.me.key;
       const solved = s.lv[0] + s.lv[1] + s.lv[2];
       return `<div class="prow${me ? ' me' : ''}"><span class="rank">${i + 1}</span>
-        <div class="pname"><b>${esc(p.name)}${me ? ` <small>(${esc(x.you)})</small>` : ''}</b>
+        <div class="pname"><b>${p.role === 'kids' && isFamily(L.base) ? '🧒 ' : ''}${esc(p.name)}${me ? ` <small>(${esc(x.you)})</small>` : ''}</b>
         <small>${(fixedLevel() ? [fixedLevel()] : [1, 2, 3]).map(lv => `${esc(fixedLevel() ? x.levels[lv - 1] : x.levels[lv - 1].slice(0, 3))} ${s.lv[lv - 1]}`).join(' · ')}` +
         `${solved ? ` · ${Math.round(100 * s.clean / solved)}% ${esc(x.clean)}` : ''}${s.gave ? ` · 🏳️${s.gave}` : ''}</small></div>
         <span class="ppts">${s.pts}</span></div>`;
@@ -838,6 +862,15 @@ function viewLeague() {
   h += `<button class="btn text wide" data-a="lrefresh">${esc(x.refresh)}</button>`;
   h += `<div class="bottom"><button class="btn danger wide" data-a="askLeave">${esc(x.leave)}</button></div></div>`;
   return h;
+}
+
+/** "Adult / Kid" choice for family leagues. */
+function rolePicker(x) {
+  const role = S.form.role || 'adult';
+  return `<p class="label">${esc(x.whoAreYou)}</p><div class="grid2">` +
+    `<button class="opt${role === 'adult' ? ' on' : ''}" data-a="pickRole" data-v="adult">${esc(x.iAmAdult)}</button>` +
+    `<button class="opt${role === 'kids' ? ' on' : ''}" data-a="pickRole" data-v="kids">🧒 ${esc(x.iAmKid)}</button></div>` +
+    `<p class="hint">${esc(x.familyHint)}</p>`;
 }
 
 function viewDialog() {
@@ -912,6 +945,7 @@ const actions = {
     if (!S.data[v]) ensureData(v).then(render).catch(() => {});
   },
   pickLevel: v => { S.form.level = Number(v); },
+  pickRole: v => { S.form.role = v; },
   togglePack: v => {
     const all = packsIn(S.form.base || curBase());
     const set = new Set(S.form.packSel || all);
@@ -936,7 +970,7 @@ const actions = {
       const base = S.form.base || curBase();
       const avail = packsIn(base);
       const code = await createLeagueDoc(lname, base, S.form.level, encodePacks(S.form.packSel || new Set(avail), avail), name);
-      await joinLeague(code, name);
+      await joinLeague(code, name, S.form.role);
       openLeagueScreen();
     });
   },
@@ -945,13 +979,13 @@ const actions = {
     const code = S.form.code.toUpperCase().replace(/[^A-Z0-9]/g, ''), name = S.form.name.trim();
     if (code.length < 4) { S.formError = x.notFound; return; }
     if (!name) { S.formError = x.needName; return; }
-    busy(async () => { await joinLeague(code, name); openLeagueScreen(); });
+    busy(async () => { await joinLeague(code, name, S.form.role); openLeagueScreen(); });
   },
   joinInvite: () => {
     const name = S.form.name.trim();
     if (!name) { S.formError = t().needName; return; }
     const code = S.invite.code;
-    busy(async () => { await joinLeague(code, name); S.invite = null; openLeagueScreen(); });
+    busy(async () => { await joinLeague(code, name, S.form.role); S.invite = null; openLeagueScreen(); });
   },
   inviteDone: () => { S.invite = null; actions.back(); },
   inviteRetry: () => { startInvite(S.invite.code); },

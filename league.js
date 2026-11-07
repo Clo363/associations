@@ -126,10 +126,10 @@ async function fetchPlayer(code, key) {
   return d ? decFields(d.fields || {}) : null;
 }
 
-async function savePlayer(code, key, name, results) {
-  await fs('PATCH', playerPath(code, key), {
-    fields: { name: enc(name), updatedAt: enc(Date.now()), results: enc(results) },
-  });
+async function savePlayer(code, key, name, results, role) {
+  const fields = { name: enc(name), updatedAt: enc(Date.now()), results: enc(results) };
+  if (role) fields.role = enc(role);
+  await fs('PATCH', playerPath(code, key), { fields });
 }
 
 async function fetchPlayers(code) {
@@ -138,7 +138,7 @@ async function fetchPlayers(code) {
     const f = decFields(d.fields || {});
     let key = d.name.split('/').pop();
     try { key = decodeURIComponent(key); } catch (e) { /* keep as is */ }
-    return { key, name: f.name || key, results: f.results || {} };
+    return { key, name: f.name || key, results: f.results || {}, role: f.role || 'adult' };
   });
 }
 
